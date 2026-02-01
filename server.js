@@ -1,61 +1,211 @@
 const express = require('express');
-const https = require('https');
+const http = require('http');
 const socketIO = require('socket.io');
 const bodyParser = require('body-parser');
 const { Eureka } = require('eureka-js-client');
-const os = require('os');
-const fs = require('fs');
 
 const app = express();
 const PORT = 9093;
+const ip = '192.168.31.154';
 
-// Get the first non-internal IPv4 address of the host (for Eureka)
-const ip = Object.values(os.networkInterfaces())
-  .flat()
-  .find((iface) => iface.family === 'IPv4' && !iface.internal)?.address || '127.0.0.1';
+const server = http.createServer(app);
 
-
-const options = {
-  key: fs.readFileSync('./cert/privkey.pem'),         // private key
-  cert: fs.readFileSync('./cert/cert.pem')        // public certificate
-};
-
-const server = https.createServer(options,app);
 const io = socketIO(server, {
-  cors: {
-    origin: '*',
-  },
+  cors: { origin: '*' },
 });
 
 app.use(bodyParser.json());
 
-const userSocketMap = new Map();
+/**
+ * ============================
+ * SIMPLE LOGGER
+ * ============================
+ */
+const log = {
+  info: (msg, meta = {}) =>
+    console.log(`[INFO ] ${new Date().toISOString()} ${msg}`, meta),
 
-// === WebSocket Handlers ===
-io.on('connection', (socket) => {
-  console.log('Client connected:', socket.id);
+  warn: (msg, meta = {}) =>
+    console.warn(`[WARN ] ${new Date().toISOString()} ${msg}`, meta),
 
-  // Register socket
-  socket.on('register', (userId) => {
-    const key = String(userId);
-    userSocketMap.set(key, socket.id);
-    console.log(`User ${key} registered with socket ${socket.id}`);
+  error: (msg, meta = {}) =>
+    console.error(`[ERROR] ${new Date().toISOString()} ${msg}`, meta),
+
+  debug: (msg, meta = {}) => {
+    if (process.env.DEBUG === 'true') {
+      console.debug(`[DEBUG] ${new Date().toISOString()} ${msg}`, meta);
+    }
+  },
+};
+
+/**
+ * ============================
+ * HTTP REQUEST LOGGING
+ * ============================
+ */
+app.use((req, res, next) => {
+  const start = Date.now();
+
+  res.on('finish', () => {
+    log.info('HTTP request', {
+      method: req.method,
+      path: req.originalUrl,
+      status: res.statusCode,
+      durationMs: Date.now() - start,
+    });
   });
 
-  // Private message
-  socket.on('private_message', ({ toUserId, message }) => {
-    const targetSocketId = userSocketMap.get(String(toUserId));
-    if (targetSocketId) {
-      io.to(targetSocketId).emit('private_message', {
-        from: socket.id,
-        message,
+  next();
+});
+
+/**
+ * Map<userId, socketId>
+ */
+const userSocketMap = new Map();
+
+/**
+ * ============================
+ * OFFLINE MESSAGE API CALL
+ * ============================
+ */
+async function saveOfflineMessage({ message }) {
+  log.info('Saving offline message', {
+    sender: message.sender,
+    receiver: message.receiver,
+  });
+
+  try {
+    const response = await fetch(`http://${ip}:9092/api/message`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sender: message.sender,
+        recipient: message.receiver,
+        content: JSON.stringify(message),
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      log.error('Failed to save offline message', { errorText });
+    } else {
+      log.info('Offline message saved', {
+        receiver: message.receiver,
+      });
+    }
+  } catch (err) {
+    log.error('Offline message API error', {
+      error: err.message,
+    });
+  }
+}
+
+/**
+ * ============================
+ * SOCKET.IO HANDLERS
+ * ============================
+ */
+io.on('connection', (socket) => {
+  log.info('Socket connected', { socketId: socket.id });
+
+  /**
+   * Register user
+   */
+  socket.on('register', async (userId) => {
+    const key = String(userId);
+    userSocketMap.set(key, socket.id);
+
+    log.info('User registered', {
+      userId: key,
+      socketId: socket.id,
+      onlineUsers: userSocketMap.size,
+    });
+
+    /**
+     * Fetch pending offline messages
+     */
+    try {
+      const res = await fetch(
+        `http://${ip}:9092/api/messages/pending/${key}`
+      );
+
+      if (res.ok) {
+        const messages = await res.json();
+        
+        socket.emit('pending_messages', {message:messages});
+        
+
+        log.info('Offline messages delivered', {
+          userId: key,
+          count: messages.length,
+        });
+      } else {
+        log.warn('No offline messages', { userId: key });
+      }
+    } catch (err) {
+      log.error('Failed to fetch offline messages', {
+        userId: key,
+        error: err.message,
       });
     }
   });
 
-  // Notifications
+  /**
+   * Private message handler
+   */
+  socket.on('private_message', async ({ toUserId, message }) => {
+    log.info('Private message received', {
+      fromSocketId: socket.id,
+      toUserId,
+    });
+
+    if (!toUserId || !message) {
+      log.warn('Invalid private message payload', {
+        socketId: socket.id,
+      });
+      return;
+    }
+
+    const targetSocketId = userSocketMap.get(String(toUserId));
+
+    /**
+     * User OFFLINE → save message
+     */
+    if (!targetSocketId) {
+      log.info('User offline, persisting message', {
+        toUserId,
+      });
+
+      await saveOfflineMessage({ message });
+      return;
+    }
+
+    /**
+     * User ONLINE → send message
+     */
+    io.to(targetSocketId).emit('private_message', {
+      from: socket.id,
+      message,
+      timestamp: Date.now(),
+    });
+
+    log.info('Message delivered', {
+      fromSocketId: socket.id,
+      toSocketId: targetSocketId,
+    });
+  });
+
+  /**
+   * Notifications
+   */
   socket.on('notification', ({ toUserId, message }) => {
     const targetSocketId = userSocketMap.get(String(toUserId));
+
+    log.info('Notification event', {
+      toUserId,
+      delivered: !!targetSocketId,
+    });
+
     if (targetSocketId) {
       io.to(targetSocketId).emit('notification', {
         from: socket.id,
@@ -64,59 +214,76 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Disconnect cleanup
-  socket.on('disconnect', () => {
+  /**
+   * Cleanup on disconnect
+   */
+  socket.on('disconnect', (reason) => {
     for (const [userId, socketId] of userSocketMap.entries()) {
       if (socketId === socket.id) {
         userSocketMap.delete(userId);
-        console.log(`User ${userId} disconnected`);
+
+        log.warn('User disconnected', {
+          userId,
+          socketId,
+          reason,
+          onlineUsers: userSocketMap.size,
+        });
         break;
       }
     }
   });
 });
 
-// === HTTP API for Notifications ===
+/**
+ * ============================
+ * HTTP ENDPOINTS
+ * ============================
+ */
 app.post('/send-notification', (req, res) => {
   const { toUserId, notificationTitle, notificationMessage } = req.body;
 
   if (!toUserId || !notificationMessage) {
-    return res.status(400).json({ error: 'toUserId and notificationMessage are required' });
+    log.warn('Invalid notification request', req.body);
+    return res.status(400).json({ error: 'Invalid payload' });
   }
 
   const targetSocketId = userSocketMap.get(String(toUserId));
+
   if (targetSocketId) {
     io.to(targetSocketId).emit('notification', {
       from: 'server',
       notificationTitle,
       notificationMessage,
     });
-    return res.status(200).json({ success: true });
-  } else {
-    return res.status(404).json({ error: 'User not connected' });
+
+    log.info('Notification sent', { toUserId });
+    return res.json({ success: true });
   }
+
+  log.warn('Notification target offline', { toUserId });
+  res.status(404).json({ error: 'User not connected' });
 });
 
-// === Health Checks ===
-app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'UP' });
-});
+/**
+ * Health & Info
+ */
+app.get('/health', (_, res) => res.json({ status: 'UP' }));
+app.get('/info', (_, res) =>
+  res.json({ service: 'FZ-MESSAGING-SERVICE', version: '1.0.0' })
+);
 
-app.get('/info', (req, res) => {
-  res.status(200).json({ service: 'FZ-MESSAGING-SERVICE', version: '1.0.0' });
-});
-
-// === Eureka Client ===
+/**
+ * ============================
+ * EUREKA REGISTRATION
+ * ============================
+ */
 const eurekaClient = new Eureka({
   instance: {
     app: 'FZ-MESSAGING-SERVICE',
     instanceId: `FZ-MESSAGING-SERVICE:${PORT}`,
     hostName: ip,
     ipAddr: ip,
-    port: {
-      '$': PORT,
-      '@enabled': true,
-    },
+    port: { $: PORT, '@enabled': true },
     statusPageUrl: `http://${ip}:${PORT}/info`,
     healthCheckUrl: `http://${ip}:${PORT}/health`,
     vipAddress: 'FZ-MESSAGING-SERVICE',
@@ -126,24 +293,27 @@ const eurekaClient = new Eureka({
     },
   },
   eureka: {
-    host: '172.17.0.1', // Your Eureka server IP (host.docker.internal or service name in Docker)
+    host: '192.168.31.154',
     port: 7070,
     servicePath: '/eureka/apps/',
-    maxRetries: 10,
-    requestRetryDelay: 2000,
   },
 });
 
-// Start Eureka registration
 eurekaClient.start((error) => {
   if (error) {
-    console.error('❌ Eureka registration failed:', error);
+    log.error('Eureka registration failed', { error });
   } else {
-    console.log('✅ Eureka registration successful');
+    log.info('Eureka registration successful');
   }
 });
 
-// Start the server
+/**
+ * ============================
+ * START SERVER
+ * ============================
+ */
 server.listen(PORT, () => {
-  console.log(`🚀 Server running on http://${ip}:${PORT}`);
+  log.info('Server started', {
+    url: `http://${ip}:${PORT}`,
+  });
 });
