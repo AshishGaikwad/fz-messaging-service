@@ -75,7 +75,7 @@ async function saveOfflineMessage({ message }) {
   });
 
   try {
-    const response = await fetch(`http://${ip}:9092/api/message`, {
+    const response = await fetch(`http://${ip}/chat/api/message`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -126,7 +126,7 @@ io.on('connection', (socket) => {
      */
     try {
       const res = await fetch(
-        `http://${ip}:9092/api/messages/pending/${key}`
+        `http://${ip}/chat/api/messages/pending/${key}`
       );
 
       if (res.ok) {
@@ -294,8 +294,8 @@ const eurekaClient = new Eureka({
   },
   eureka: {
     host: '192.168.31.154',
-    port: 7070,
-    servicePath: '/eureka/apps/',
+    port: 80,
+    servicePath: '/eureka/eureka/apps/',
   },
 });
 

@@ -1,0 +1,11 @@
+version: "3.9"
+
+services:
+  app:
+    build: .
+    container_name: node_app
+    ports:
+      - "9093:9093"
+    environment:
+      NODE_ENV: production
+    restart: unless-stopped
