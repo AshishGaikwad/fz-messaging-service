@@ -6,7 +6,7 @@ const envFile = process.env.NODE_ENV === 'production' ? '.env.prod' : '.env.dev'
 dotenv.config({ path: path.join(__dirname, envFile) });
 
 const express = require('express');
-const http = require('https');
+const http = require('http');
 const socketIO = require('socket.io');
 const bodyParser = require('body-parser');
 const { Eureka } = require('eureka-js-client');
