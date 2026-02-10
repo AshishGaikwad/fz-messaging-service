@@ -82,7 +82,7 @@ async function saveOfflineMessage({ message }) {
   });
 
   try {
-    const response = await fetch(`http://${ip}/chat/api/message`, {
+    const response = await fetch(`https://${ip}/chat/api/message`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -133,7 +133,7 @@ io.on('connection', (socket) => {
      */
     try {
       const res = await fetch(
-        `http://${ip}/chat/api/messages/pending/${key}`
+        `https://${ip}/chat/api/messages/pending/${key}`
       );
 
       if (res.ok) {
