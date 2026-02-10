@@ -6,7 +6,7 @@ const envFile = process.env.NODE_ENV === 'production' ? '.env.prod' : '.env.dev'
 dotenv.config({ path: path.join(__dirname, envFile) });
 
 const express = require('express');
-const http = require('http');
+const http = require('https');
 const socketIO = require('socket.io');
 const bodyParser = require('body-parser');
 const { Eureka } = require('eureka-js-client');
@@ -300,9 +300,9 @@ const eurekaClient = new Eureka({
     },
   },
   eureka: {
-    host: process.env.EUREKA_HOST || '192.168.31.154',
-    port: process.env.EUREKA_PORT || 80,
-    servicePath: process.env.EUREKA_SERVICE_PATH || '/eureka/eureka/apps/',
+    host: process.env.EUREKA_HOST || 'localhost',
+    port: process.env.EUREKA_PORT || 7070,
+    servicePath: process.env.EUREKA_SERVICE_PATH || '/eureka/apps/',
   },
 });
 
