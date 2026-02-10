@@ -8,4 +8,10 @@ services:
       - "9093:9093"
     environment:
       NODE_ENV: production
+      PORT: 9093
+      SERVER_IP: 0.0.0.0
+      DEBUG: "false"
     restart: unless-stopped
+    # Uncomment to use .env.prod file instead of inline environment vars:
+    # env_file:
+    #   - .env.prod

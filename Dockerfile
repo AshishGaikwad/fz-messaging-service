@@ -13,6 +13,9 @@ RUN npm install --production
 # Copy the rest of your application code
 COPY . .
 
+# Copy environment file for production (can be overridden at runtime)
+COPY .env.prod .
+
 # Expose the port your app runs on
 EXPOSE 9093
 

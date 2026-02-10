@@ -1,3 +1,10 @@
+const dotenv = require('dotenv');
+const path = require('path');
+
+// Load environment based on NODE_ENV
+const envFile = process.env.NODE_ENV === 'production' ? '.env.prod' : '.env.dev';
+dotenv.config({ path: path.join(__dirname, envFile) });
+
 const express = require('express');
 const http = require('http');
 const socketIO = require('socket.io');
@@ -5,8 +12,8 @@ const bodyParser = require('body-parser');
 const { Eureka } = require('eureka-js-client');
 
 const app = express();
-const PORT = 9093;
-const ip = '192.168.31.154';
+const PORT = process.env.PORT || 9093;
+const ip = process.env.SERVER_IP || 'localhost';
 
 const server = http.createServer(app);
 
@@ -293,9 +300,9 @@ const eurekaClient = new Eureka({
     },
   },
   eureka: {
-    host: '192.168.31.154',
-    port: 80,
-    servicePath: '/eureka/eureka/apps/',
+    host: process.env.EUREKA_HOST || '192.168.31.154',
+    port: process.env.EUREKA_PORT || 80,
+    servicePath: process.env.EUREKA_SERVICE_PATH || '/eureka/eureka/apps/',
   },
 });
 
