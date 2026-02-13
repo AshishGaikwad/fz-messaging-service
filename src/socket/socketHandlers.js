@@ -63,7 +63,7 @@ function registerSocketHandlers(io) {
           const tokens = userService.getUserExpoTokens(toUserId);
           if (tokens.length > 0) {
             await expoService.sendPush(tokens, 'New Message', message.text, {
-              senderId: message.sender,
+              senderId: toUserId,
             });
             logger.info('Expo push sent', { toUserId, tokens: tokens.length });
           }
