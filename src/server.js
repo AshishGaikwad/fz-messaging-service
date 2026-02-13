@@ -42,7 +42,7 @@ app.use(bodyParser.json());
 app.use(requestLogger);
 
 // API host for message service
-const apiHost = `${env.APP_PROTOCOL}://${env.SERVER_IP}:${env.PORT}`;
+const apiHost = `${env.CHAT_API_BASE_URL}`;
 messageService.initialize(apiHost);
 
 /**
