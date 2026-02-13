@@ -44,7 +44,7 @@ class MessageService {
    */
   async saveOfflineMessage({ sender, receiver, content }) {
     logger.info('Saving offline message', { sender, receiver });
-   console.log('Fetching pending messages for user', { userId, apiHost: this.apiHost });
+   console.log('Saving offline message for receiver', { receiver, apiHost: this.apiHost });
     try {
       const response = await fetch(`${this.apiHost}/chat/api/message`, {
         method: 'POST',
