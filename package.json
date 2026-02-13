@@ -1,11 +1,11 @@
 {
   "name": "fz-messaging-service",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "src/server.js",
   "scripts": {
-    "dev": "set NODE_ENV=development && node server.js",
-    "prod": "set NODE_ENV=production && node server.js",
-    "start": "node server.js",
+    "dev": "set NODE_ENV=development && node src/server.js",
+    "prod": "set NODE_ENV=production && node src/server.js",
+    "start": "node src/server.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
