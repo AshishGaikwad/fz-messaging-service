@@ -24,7 +24,7 @@ class MessageService {
   async getPendingMessages(userId) {
     console.log('Fetching pending messages for user', { userId, apiHost: this.apiHost });
     try {
-      const response = await fetch(`${this.apiHost}/chat/api/messages/pending/${userId}`);
+      const response = await fetch(`${this.apiHost}/api/messages/pending/${userId}`);
       if (response.ok) {
         const messages = await response.json();
         logger.info('Pending messages fetched', { userId, count: messages.length });
@@ -46,7 +46,7 @@ class MessageService {
     logger.info('Saving offline message', { sender, receiver });
    console.log('Saving offline message for receiver', { receiver, apiHost: this.apiHost });
     try {
-      const response = await fetch(`${this.apiHost}/chat/api/message`, {
+      const response = await fetch(`${this.apiHost}/api/message`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
