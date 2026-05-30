@@ -2,16 +2,17 @@ version: "3.9"
 
 services:
   app:
-    build: .
-    container_name: node_app
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NODE_ENV: ${DOCKER_ENV:-production}
+    container_name: fz-messaging-service-${DOCKER_ENV:-prod}
     ports:
-      - "9093:9093"
-    environment:
-      NODE_ENV: production
-      PORT: 9093
-      SERVER_IP: 0.0.0.0
-      DEBUG: "false"
+      - "${HOST_PORT:-9093}:${HOST_PORT:-9093}"
+    env_file:
+      - .env.${DOCKER_ENV:-prod}
     restart: unless-stopped
-    # Uncomment to use .env.prod file instead of inline environment vars:
-    # env_file:
-    #   - .env.prod
+    # To run a specific environment, set DOCKER_ENV and HOST_PORT:
+    # DOCKER_ENV=dev HOST_PORT=9093 docker compose up -d --build
+    # DOCKER_ENV=prod HOST_PORT=9095 docker compose up -d --build

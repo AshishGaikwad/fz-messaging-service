@@ -1,10 +1,12 @@
 pipeline {
   agent any
 
+  parameters {
+    choice(name: 'DEPLOY_ENV', choices: ['dev', 'prod'], description: 'Environment to build and deploy')
+  }
+
   environment {
     IMAGE_NAME = 'fz-messaging-service'
-    CONTAINER_NAME = 'fz-messaging-service'
-    APP_PORT = '9093'
   }
 
   stages {
@@ -16,50 +18,53 @@ pipeline {
 
     stage('Install Dependencies') {
       steps {
-        sh 'npm install'
+        sh 'npm ci'
       }
     }
 
     stage('Run Tests') {
       steps {
-        echo 'Skipping tests...'
-        // You can add: sh 'npm test'
+        script {
+          if (fileExists('package.json') && sh(returnStatus: true, script: 'npm test -- --help >/dev/null 2>&1') == 0) {
+            sh 'npm test'
+          } else {
+            echo 'Skipping tests because no test script is configured.'
+          }
+        }
       }
     }
 
     stage('Build Docker Image') {
       steps {
-        sh "docker build -t $IMAGE_NAME ."
-      }
-    }
-
-    stage('Stop Existing Container') {
-      steps {
         script {
-          // Stop and remove if container already running
-          sh """
-            if [ \$(docker ps -q -f name=$CONTAINER_NAME) ]; then
-              docker stop $CONTAINER_NAME
-              docker rm $CONTAINER_NAME
-            fi
-          """
+          def buildTag = "${IMAGE_NAME}:${params.DEPLOY_ENV}"
+          sh "docker build --build-arg NODE_ENV=${params.DEPLOY_ENV} -t ${buildTag} ."
         }
       }
     }
 
-    stage('Run Docker Container') {
+    stage('Deploy Container') {
       steps {
-        sh "docker run -d --name $CONTAINER_NAME -p $APP_PORT:$APP_PORT $IMAGE_NAME"
+        script {
+          def envFile = ".env.${params.DEPLOY_ENV}"
+          def hostPort = params.DEPLOY_ENV == 'prod' ? '9095' : '9093'
+          def containerName = "${IMAGE_NAME}-${params.DEPLOY_ENV}"
+          def imageTag = "${IMAGE_NAME}:${params.DEPLOY_ENV}"
+
+          sh "if [ $(docker ps -q -f name=${containerName}) ]; then docker stop ${containerName} && docker rm ${containerName}; fi"
+          sh "docker run -d --name ${containerName} --env-file ${envFile} -p ${hostPort}:${hostPort} ${imageTag}"
+          echo "Deployed ${containerName} on port ${hostPort} using ${envFile}"
+        }
       }
     }
   }
 
   post {
     success {
-      echo "✅ App is running locally on port $APP_PORT"
+      echo 'App deployed successfully.'
     }
     failure {
-      echo "❌ Build or run failed!"
+      echo 'Build or deployment failed!'
     }
   }
 }

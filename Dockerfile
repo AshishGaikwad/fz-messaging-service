@@ -1,23 +1,22 @@
 # Use an official Node.js runtime as the base image
 FROM node:20-alpine
 
+# Build argument for environment-specific installs
+ARG NODE_ENV=production
+ENV NODE_ENV=${NODE_ENV}
+
 # Set working directory inside the container
 WORKDIR /usr/src/app
 
-# Copy package.json and package-lock.json
+# Copy package files and install only production dependencies
 COPY package*.json ./
-
-# Install dependencies
 RUN npm install --production
 
-# Copy the rest of your application code
+# Copy application source
 COPY . .
 
-# Copy environment file for production (can be overridden at runtime)
-COPY .env.prod .
-
-# Expose the port your app runs on
+# Expose the default app port. The actual runtime port is controlled by environment variables.
 EXPOSE 9093
 
-# Define the command to run your app
-CMD ["node", "server.js"]
+# Run the application from the current source location
+CMD ["node", "src/server.js"]
