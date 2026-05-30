@@ -15,7 +15,7 @@ module.exports = {
   PORT: process.env.PORT || 9093,
   NODE_ENV: process.env.NODE_ENV || 'development',
   SERVER_IP: process.env.SERVER_IP || 'localhost',
-  APP_PROTOCOL: process.env.PROTOCOL || 'http',
+  APP_PROTOCOL: process.env.APP_PROTOCOL || 'http',
   DEBUG: process.env.DEBUG === 'true',
   EUREKA_HOST: process.env.EUREKA_HOST || 'localhost',
   EUREKA_PORT: process.env.EUREKA_PORT || 7070,
