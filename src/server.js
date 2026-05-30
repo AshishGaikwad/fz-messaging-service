@@ -7,8 +7,11 @@
 
 const express = require('express');
 const http = require('http');
+const https = require('https');
 const socketIO = require('socket.io');
 const bodyParser = require('body-parser');
+const fs = require('fs');
+const path = require('path');
 
 // Configuration & Utils
 const env = require('./config/environment');
@@ -32,7 +35,18 @@ const messageService = require('./services/messageService');
  */
 
 const app = express();
-const server = http.createServer(app);
+
+const httpsOptions = {
+  key: fs.readFileSync(path.join(__dirname, '../cert/private.key')),
+  cert: fs.readFileSync(path.join(__dirname, '../cert/certificate.crt')),
+  // ca: fs.readFileSync(path.join(__dirname, '../cert/ca.crt')), // if needed
+};
+
+
+const createdServer = env.PROTOCOL === 'https' ? https.createServer(httpsOptions,app) : http.createServer(app);
+  
+console.log(`Using ${env.PROTOCOL} server`);
+const server = createdServer;
 const io = socketIO(server, {
   cors: { origin: '*' },
 });
