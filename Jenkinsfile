@@ -51,7 +51,7 @@ pipeline {
           def containerName = "${IMAGE_NAME}-${params.DEPLOY_ENV}"
           def imageTag = "${IMAGE_NAME}:${params.DEPLOY_ENV}"
 
-          sh "if [ $(docker ps -q -f name=${containerName}) ]; then docker stop ${containerName} && docker rm ${containerName}; fi"
+          sh "if [ \$(docker ps -q -f name=${containerName}) ]; then docker stop ${containerName} && docker rm ${containerName}; fi"
           sh "docker run -d --name ${containerName} --env-file ${envFile} -p ${hostPort}:${hostPort} ${imageTag}"
           echo "Deployed ${containerName} on port ${hostPort} using ${envFile}"
         }
