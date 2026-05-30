@@ -43,9 +43,9 @@ const httpsOptions = {
 };
 
 
-const createdServer = env.PROTOCOL === 'https' ? https.createServer(httpsOptions,app) : http.createServer(app);
+const createdServer = env.APP_PROTOCOL === 'https' ? https.createServer(httpsOptions,app) : http.createServer(app);
   
-console.log(`Using ${env.PROTOCOL} server`);
+console.log(`Using ${env.APP_PROTOCOL} server`);
 const server = createdServer;
 const io = socketIO(server, {
   cors: { origin: '*' },
