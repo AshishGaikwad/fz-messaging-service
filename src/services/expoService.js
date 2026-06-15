@@ -27,7 +27,6 @@ class ExpoService {
       title,
       body,
       data,
-      ...(data.senderPic ? { icon: data.senderPic } : {}),
     }));
 
     const batches = this.createBatches(messages, this.BATCH_SIZE);

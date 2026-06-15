@@ -59,23 +59,14 @@ class MessageService {
       if (!response.ok) {
         const errorText = await response.text();
         logger.error('Failed to save offline message', { errorText });
-        return { success: false };
+        return false;
       } else {
-        let responseBody = {};
-        try {
-          responseBody = await response.json();
-        } catch (err) {
-          responseBody = {};
-        }
         logger.info('Offline message saved', { receiver });
-        return {
-          success: true,
-          ...responseBody,
-        };
+        return true;
       }
     } catch (err) {
       logger.error('Message API error', { error: err.message });
-      return { success: false };
+      return false;
     }
   }
 }
