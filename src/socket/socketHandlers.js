@@ -95,6 +95,86 @@ function registerSocketHandlers(io) {
     });
 
     /**
+     * Vibe Mode rooms. The matching service owns persistence; this server
+     * handles the low-latency fanout to active mobile clients.
+     */
+    socket.on('vibe_subscribe', ({ vibeId, sessionId } = {}) => {
+      if (!vibeId && !sessionId) {
+        logger.warn('Invalid vibe_subscribe payload', { socketId: socket.id });
+        return;
+      }
+
+      const room = sessionId ? `vibe:session:${sessionId}` : `vibe:${vibeId}`;
+      socket.join(room);
+      socket.emit('vibe_subscribed', { room, vibeId, sessionId });
+      logger.info('Socket joined vibe room', { socketId: socket.id, room });
+    });
+
+    socket.on('vibe_unsubscribe', ({ vibeId, sessionId } = {}) => {
+      if (!vibeId && !sessionId) return;
+
+      const room = sessionId ? `vibe:session:${sessionId}` : `vibe:${vibeId}`;
+      socket.leave(room);
+      logger.info('Socket left vibe room', { socketId: socket.id, room });
+    });
+
+    /**
+     * Temporary Vibe chat messages. These are live-only and are not persisted
+     * as normal chat messages when the receiver is offline.
+     */
+    socket.on('vibe_message', async ({ toUserId, sessionId, message } = {}) => {
+      if (!toUserId || !sessionId || !message) {
+        logger.warn('Invalid vibe message payload', { socketId: socket.id });
+        return;
+      }
+
+      const targetSocketId = userService.getUserSocket(toUserId);
+      if (!targetSocketId) {
+        try {
+          const tokens = userService.getUserExpoTokens(toUserId);
+          if (tokens.length > 0) {
+            await expoService.sendPush(
+              tokens,
+              'New Vibe message',
+              'You have a new message in Vibe Mode.',
+              {
+                type: 'VIBE_MESSAGE',
+                sessionId,
+                senderId: message.sender,
+              }
+            );
+            logger.info('Vibe Expo push sent', { toUserId, sessionId, tokens: tokens.length });
+          }
+        } catch (err) {
+          logger.error('Failed to send vibe Expo push', { toUserId, sessionId, error: err.message });
+        }
+
+        socket.emit('vibe_message_failed', {
+          toUserId,
+          sessionId,
+          reason: 'USER_OFFLINE',
+          messageId: message.id,
+        });
+        logger.info('Vibe message target offline', { toUserId, sessionId });
+        return;
+      }
+
+      const payload = {
+        sessionId,
+        from: socket.id,
+        message: {
+          ...message,
+          sessionId,
+          receiver: toUserId,
+          timestamp: message.timestamp || Date.now(),
+        },
+      };
+
+      io.to(targetSocketId).emit('vibe_message', payload);
+      logger.info('Vibe message delivered', { toUserId, sessionId });
+    });
+
+    /**
      * Handle disconnect
      */
     socket.on('disconnect', (reason) => {

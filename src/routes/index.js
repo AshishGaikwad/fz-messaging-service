@@ -26,6 +26,7 @@ function initializeRoutes(io) {
 
   // Notification routes
   router.post('/send-notification', notificationController.sendNotification);
+  router.post('/broadcast-vibe-event', notificationController.broadcastVibeEvent);
 
   return router;
 }
