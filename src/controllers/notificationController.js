@@ -6,6 +6,7 @@
 
 const logger = require('../utils/logger');
 const userService = require('../services/userService');
+const expoService = require('../services/expoService');
 
 class NotificationController {
   constructor(io) {
@@ -15,7 +16,7 @@ class NotificationController {
   /**
    * Send notification to user
    */
-  sendNotification = (req, res) => {
+  sendNotification = async (req, res) => {
     const { toUserId, notificationTitle, notificationMessage } = req.body;
 
     if (!toUserId || !notificationMessage) {
@@ -34,7 +35,26 @@ class NotificationController {
       return res.json({ success: true });
     }
 
-    logger.warn('Notification target offline', { toUserId });
+    const tokens = userService.getUserExpoTokens(toUserId);
+    if (tokens.length > 0) {
+      try {
+        await expoService.sendPush(
+          tokens,
+          notificationTitle || 'Frenzo',
+          notificationMessage,
+          {
+            type: 'GENERAL_NOTIFICATION',
+            toUserId,
+          }
+        );
+        logger.info('Notification sent via Expo push', { toUserId, tokens: tokens.length });
+        return res.json({ success: true, deliveredBy: 'push' });
+      } catch (err) {
+        logger.error('Failed to send Expo notification', { toUserId, error: err.message });
+      }
+    }
+
+    logger.warn('Notification target offline and has no Expo tokens', { toUserId });
     res.status(404).json({ error: 'User not connected' });
   };
 
