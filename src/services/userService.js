@@ -6,11 +6,13 @@
 
 const logger = require('../utils/logger');
 const User = require('../models/User');
+const env = require('../config/environment');
 
 class UserService {
   constructor() {
     this.userSocketMap = new Map(); // Map<userId, socketId>
     this.userExpoTokens = new Map(); // Map<userId, Set<ExpoToken>>
+    this.userApiBaseUrl = env.USER_API_BASE_URL;
   }
 
   /**
@@ -84,6 +86,69 @@ class UserService {
    */
   getOnlineUsersCount() {
     return this.userSocketMap.size;
+  }
+
+  /**
+   * Check whether a pair is blocked in either direction.
+   */
+  async isBlockedBetween(userId, candidateUserId) {
+    try {
+      const response = await fetch(`${this.userApiBaseUrl}/internal/safety/blocks/check-batch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId,
+          candidateUserIds: [candidateUserId],
+        }),
+      });
+
+      if (!response.ok) {
+        return false;
+      }
+
+      const payload = await response.json();
+      const blockedIds = payload?.body?.blockedUserIds || [];
+      return blockedIds.includes(Number(candidateUserId));
+    } catch (error) {
+      logger.warn('Block check failed', { userId, candidateUserId, error: error.message });
+      return false;
+    }
+  }
+
+  /**
+   * Filter blocked senders from a message list.
+   */
+  async filterBlockedMessages(userId, messages = []) {
+    if (!Array.isArray(messages) || messages.length === 0) {
+      return messages;
+    }
+
+    const senderIds = [...new Set(messages.map((message) => Number(message.senderId || message.sender || 0)).filter(Boolean))];
+    if (senderIds.length === 0) {
+      return messages;
+    }
+
+    try {
+      const response = await fetch(`${this.userApiBaseUrl}/internal/safety/blocks/check-batch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId,
+          candidateUserIds: senderIds,
+        }),
+      });
+
+      if (!response.ok) {
+        return messages;
+      }
+
+      const payload = await response.json();
+      const blockedIds = new Set(payload?.body?.blockedUserIds || []);
+      return messages.filter((message) => !blockedIds.has(Number(message.senderId || message.sender || 0)));
+    } catch (error) {
+      logger.warn('Failed to filter blocked messages', { userId, error: error.message });
+      return messages;
+    }
   }
 }
 

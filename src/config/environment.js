@@ -21,4 +21,5 @@ module.exports = {
   EUREKA_PORT: process.env.EUREKA_PORT || 7070,
   EUREKA_SERVICE_PATH: process.env.EUREKA_SERVICE_PATH || '/eureka/apps/',
   CHAT_API_BASE_URL: process.env.CHAT_API_BASE_URL || 'http://localhost',
+  USER_API_BASE_URL: process.env.USER_API_BASE_URL || 'http://localhost:9090',
 };

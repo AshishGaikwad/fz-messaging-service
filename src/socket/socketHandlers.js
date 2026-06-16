@@ -24,9 +24,10 @@ function registerSocketHandlers(io) {
 
       try {
         const messages = await messageService.getPendingMessages(userId);
-        if (messages.length > 0) {
-          socket.emit('pending_messages', { message: messages });
-          logger.info('Offline messages delivered', { userId, count: messages.length });
+        const filteredMessages = await userService.filterBlockedMessages(userId, messages);
+        if (filteredMessages.length > 0) {
+          socket.emit('pending_messages', { message: filteredMessages });
+          logger.info('Offline messages delivered', { userId, count: filteredMessages.length });
         }
       } catch (err) {
         logger.error('Failed to fetch offline messages', { userId, error: err.message });
@@ -41,6 +42,15 @@ function registerSocketHandlers(io) {
 
       if (!toUserId || !message) {
         logger.warn('Invalid private message payload', { socketId: socket.id });
+        return;
+      }
+
+      if (await userService.isBlockedBetween(message.sender, toUserId)) {
+        logger.warn('Blocked private message blocked', { fromUserId: message.sender, toUserId });
+        socket.emit('private_message_blocked', {
+          toUserId,
+          reason: 'BLOCKED_USER',
+        });
         return;
       }
 
@@ -129,6 +139,16 @@ function registerSocketHandlers(io) {
       }
 
       const targetSocketId = userService.getUserSocket(toUserId);
+      if (await userService.isBlockedBetween(message.sender, toUserId)) {
+        logger.warn('Blocked vibe message blocked', { fromUserId: message.sender, toUserId, sessionId });
+        socket.emit('vibe_message_blocked', {
+          toUserId,
+          sessionId,
+          reason: 'BLOCKED_USER',
+        });
+        return;
+      }
+
       if (!targetSocketId) {
         try {
           const tokens = userService.getUserExpoTokens(toUserId);
