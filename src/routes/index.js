@@ -23,6 +23,7 @@ function initializeRoutes(io) {
 
   // Expo token routes
   router.post('/register-expo-token', ExpoTokenController.registerExpoToken);
+  router.post('/unregister-expo-token', ExpoTokenController.unregisterExpoToken);
 
   // Notification routes
   router.post('/send-notification', notificationController.sendNotification);

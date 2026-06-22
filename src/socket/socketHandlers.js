@@ -9,6 +9,11 @@ const userService = require('../services/userService');
 const messageService = require('../services/messageService');
 const expoService = require('../services/expoService');
 
+const previewText = (text = '') => {
+  const value = String(text || '').replace(/\s+/g, ' ').trim();
+  return value.length > 80 ? `${value.slice(0, 77)}...` : value;
+};
+
 /**
  * Register all Socket.IO event handlers
  */
@@ -54,6 +59,17 @@ function registerSocketHandlers(io) {
         return;
       }
 
+      const senderProfile = await userService.getUserProfile(message.sender);
+      const createdAt = new Date(message.timestamp || Date.now()).toISOString();
+      const enrichedMessage = {
+        ...message,
+        receiver: toUserId,
+        timestamp: message.timestamp || Date.now(),
+        createdAt,
+        senderName: message.senderName || senderProfile?.fullName || 'Frenzo user',
+        senderProfileImage: message.senderProfileImage || senderProfile?.profileImage || null,
+        messagePreview: previewText(message.text),
+      };
       const targetSocketId = userService.getUserSocket(toUserId);
 
       // OFFLINE -> save to database + send push notification
@@ -61,9 +77,9 @@ function registerSocketHandlers(io) {
         logger.info('User offline, persisting message', { toUserId });
 
         const messageData = {
-          sender: message.sender,
+          sender: enrichedMessage.sender,
           receiver: toUserId,
-          content: message,
+          content: enrichedMessage,
         };
 
         await messageService.saveOfflineMessage(messageData);
@@ -71,8 +87,15 @@ function registerSocketHandlers(io) {
         try {
           const tokens = userService.getUserExpoTokens(toUserId);
           if (tokens.length > 0) {
-            await expoService.sendPush(tokens, 'New Message', message.text, {
-              senderId: message.sender,
+            await expoService.sendPush(tokens, enrichedMessage.senderName, enrichedMessage.messagePreview, {
+              type: 'CHAT_MESSAGE',
+              conversationId: enrichedMessage.conversationId || [String(enrichedMessage.sender), String(toUserId)].sort().join('_'),
+              messageId: enrichedMessage.id || enrichedMessage.messageId || enrichedMessage.clientMessageId,
+              senderId: enrichedMessage.sender,
+              senderName: enrichedMessage.senderName,
+              senderProfileImage: enrichedMessage.senderProfileImage || '',
+              messagePreview: enrichedMessage.messagePreview,
+              createdAt,
             });
             logger.info('Expo push sent', { toUserId, tokens: tokens.length });
           }
@@ -86,7 +109,7 @@ function registerSocketHandlers(io) {
       // ONLINE -> deliver via socket
       io.to(targetSocketId).emit('private_message', {
         from: socket.id,
-        message,
+        message: enrichedMessage,
         timestamp: Date.now(),
       });
       logger.info('Message delivered via socket', { fromSocketId: socket.id, toSocketId: targetSocketId });

@@ -40,6 +40,18 @@ class UserService {
     logger.info('Expo token registered', { userId: key, expoToken });
   }
 
+  removeExpoToken(userId, expoToken) {
+    const key = String(userId);
+    if (!this.userExpoTokens.has(key)) return false;
+
+    const removed = this.userExpoTokens.get(key).delete(expoToken);
+    if (this.userExpoTokens.get(key).size === 0) {
+      this.userExpoTokens.delete(key);
+    }
+    logger.info('Expo token removed', { userId: key, removed });
+    return removed;
+  }
+
   /**
    * Get all Expo tokens for a user
    */
@@ -112,6 +124,26 @@ class UserService {
     } catch (error) {
       logger.warn('Block check failed', { userId, candidateUserId, error: error.message });
       return false;
+    }
+  }
+
+  async getUserProfile(userId) {
+    if (!userId) return null;
+
+    try {
+      const response = await fetch(`${this.userApiBaseUrl}/user/${userId}`);
+      if (!response.ok) return null;
+
+      const payload = await response.json();
+      const user = payload?.body || payload;
+      return {
+        id: String(user?.id || userId),
+        fullName: user?.fullName || user?.name || null,
+        profileImage: user?.profilePicUrl || user?.profileImageUrl || null,
+      };
+    } catch (error) {
+      logger.warn('Failed to fetch user profile', { userId, error: error.message });
+      return null;
     }
   }
 
