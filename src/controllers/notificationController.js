@@ -7,6 +7,7 @@
 const logger = require('../utils/logger');
 const userService = require('../services/userService');
 const expoService = require('../services/expoService');
+const notificationService = require('../services/notificationService');
 
 class NotificationController {
   constructor(io) {
@@ -17,7 +18,7 @@ class NotificationController {
    * Send notification to user
    */
   sendNotification = async (req, res) => {
-    const { toUserId, notificationTitle, notificationMessage } = req.body;
+    const { toUserId, notificationTitle, notificationMessage, fromUserId, senderName, senderProfileImage } = req.body;
 
     if (!toUserId || !notificationMessage) {
       logger.warn('Invalid notification request', req.body);
@@ -25,12 +26,29 @@ class NotificationController {
     }
 
     const targetSocketId = userService.getUserSocket(toUserId);
-    if (targetSocketId) {
-      this.io.to(targetSocketId).emit('notification', {
-        from: 'server',
-        notificationTitle,
+    const notification = {
+      from: 'server',
+      notificationTitle,
+      notificationMessage,
+      data: {
+        type: 'GENERAL_NOTIFICATION',
+        toUserId,
+        fromUserId,
+        senderId: fromUserId,
+        senderName,
+        senderProfileImage,
+        senderProfileImageLowQuality: senderProfileImage,
+        senderImageUrl: senderProfileImage,
         notificationMessage,
-      });
+        notificationKey: fromUserId && notificationMessage
+          ? `notification:${fromUserId}:${String(notificationMessage).trim()}`
+          : undefined,
+      },
+      createdAt: new Date().toISOString(),
+    };
+
+    if (targetSocketId) {
+      this.io.to(targetSocketId).emit('notification', notification);
       logger.info('Notification sent', { toUserId });
       return res.json({ success: true });
     }
@@ -42,20 +60,20 @@ class NotificationController {
           tokens,
           notificationTitle || 'Frenzo',
           notificationMessage,
-          {
-            type: 'GENERAL_NOTIFICATION',
-            toUserId,
-          }
+          notification.data
         );
         logger.info('Notification sent via Expo push', { toUserId, tokens: tokens.length });
         return res.json({ success: true, deliveredBy: 'push' });
       } catch (err) {
         logger.error('Failed to send Expo notification', { toUserId, error: err.message });
       }
+    } else {
+      logger.warn('Push notification skipped; target has no Expo tokens', { toUserId });
     }
 
-    logger.warn('Notification target offline and has no Expo tokens', { toUserId });
-    res.status(404).json({ error: 'User not connected' });
+    notificationService.savePendingNotification(toUserId, notification);
+    logger.warn('Notification target offline; queued for socket delivery', { toUserId });
+    return res.json({ success: true, queued: true });
   };
 
   /**

@@ -58,6 +58,7 @@ app.use(requestLogger);
 // API host for message service
 const apiHost = `${env.CHAT_API_BASE_URL}`;
 messageService.initialize(apiHost);
+logger.info('Message persistence API configured', { apiHost });
 
 /**
  * ============================

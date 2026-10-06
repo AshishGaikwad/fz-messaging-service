@@ -8,10 +8,35 @@ const logger = require('../utils/logger');
 const userService = require('../services/userService');
 const messageService = require('../services/messageService');
 const expoService = require('../services/expoService');
+const notificationService = require('../services/notificationService');
 
 const previewText = (text = '') => {
   const value = String(text || '').replace(/\s+/g, ' ').trim();
   return value.length > 80 ? `${value.slice(0, 77)}...` : value;
+};
+
+const isRealName = (value) => {
+  if (typeof value !== 'string') return false;
+  const normalized = value.trim();
+  return normalized.length > 0 && normalized.toLowerCase() !== 'frenzo user';
+};
+
+const firstRealName = (...values) => {
+  const found = values.find(isRealName);
+  return found ? found.trim() : null;
+};
+
+const resolveSenderImage = (message = {}, senderProfile = {}) =>
+  message.senderProfileImage ||
+  message.senderProfileImageLowQuality ||
+  message.senderImageUrl ||
+  senderProfile?.profileImage ||
+  null;
+
+const getMessageNotificationKey = (message = {}, senderId, receiverId) => {
+  const messageId = message.id || message.messageId || message.clientMessageId;
+  if (messageId) return `message:${messageId}`;
+  return `chat:${[String(senderId), String(receiverId)].sort().join('_')}:${senderId}:${previewText(message.text)}`;
 };
 
 /**
@@ -26,6 +51,14 @@ function registerSocketHandlers(io) {
      */
     socket.on('register', async (userId) => {
       userService.registerUserSocket(userId, socket.id);
+
+      const pendingNotifications = notificationService.drainPendingNotifications(userId);
+      if (pendingNotifications.length > 0) {
+        pendingNotifications.forEach((notification) => {
+          socket.emit('notification', notification);
+        });
+        logger.info('Pending notifications delivered', { userId, count: pendingNotifications.length });
+      }
 
       try {
         const messages = await messageService.getPendingMessages(userId);
@@ -66,10 +99,12 @@ function registerSocketHandlers(io) {
         receiver: toUserId,
         timestamp: message.timestamp || Date.now(),
         createdAt,
-        senderName: message.senderName || senderProfile?.fullName || 'Frenzo user',
-        senderProfileImage: message.senderProfileImage || senderProfile?.profileImage || null,
+        senderName: firstRealName(senderProfile?.fullName, message.senderName) || 'Frenzo user',
+        senderProfileImage: resolveSenderImage(message, senderProfile),
         messagePreview: previewText(message.text),
       };
+      const conversationId = enrichedMessage.conversationId || [String(enrichedMessage.sender), String(toUserId)].sort().join('_');
+      const notificationKey = getMessageNotificationKey(enrichedMessage, enrichedMessage.sender, toUserId);
       const targetSocketId = userService.getUserSocket(toUserId);
 
       // OFFLINE -> save to database + send push notification
@@ -89,15 +124,22 @@ function registerSocketHandlers(io) {
           if (tokens.length > 0) {
             await expoService.sendPush(tokens, enrichedMessage.senderName, enrichedMessage.messagePreview, {
               type: 'CHAT_MESSAGE',
-              conversationId: enrichedMessage.conversationId || [String(enrichedMessage.sender), String(toUserId)].sort().join('_'),
+              conversationId,
               messageId: enrichedMessage.id || enrichedMessage.messageId || enrichedMessage.clientMessageId,
               senderId: enrichedMessage.sender,
+              receiverId: toUserId,
               senderName: enrichedMessage.senderName,
               senderProfileImage: enrichedMessage.senderProfileImage || '',
+              senderProfileImageLowQuality: enrichedMessage.senderProfileImage || '',
+              senderImageUrl: enrichedMessage.senderProfileImage || '',
               messagePreview: enrichedMessage.messagePreview,
+              notificationKey,
+              categoryId: 'CHAT_MESSAGE_REPLY',
               createdAt,
             });
             logger.info('Expo push sent', { toUserId, tokens: tokens.length });
+          } else {
+            logger.warn('Offline push skipped; receiver has no Expo tokens', { toUserId });
           }
         } catch (err) {
           logger.error('Failed to send Expo push', { toUserId, error: err.message });
@@ -187,6 +229,8 @@ function registerSocketHandlers(io) {
               }
             );
             logger.info('Vibe Expo push sent', { toUserId, sessionId, tokens: tokens.length });
+          } else {
+            logger.warn('Vibe push skipped; receiver has no Expo tokens', { toUserId, sessionId });
           }
         } catch (err) {
           logger.error('Failed to send vibe Expo push', { toUserId, sessionId, error: err.message });

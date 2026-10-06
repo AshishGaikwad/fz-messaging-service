@@ -15,14 +15,14 @@ class MessageService {
    * Initialize message service with API host
    */
   initialize(apiHost) {
-    this.apiHost = apiHost;
+    this.apiHost = String(apiHost || '').replace(/\/+$/, '');
   }
 
   /**
    * Fetch pending offline messages for user
    */
   async getPendingMessages(userId) {
-    console.log('Fetching pending messages for user', { userId, apiHost: this.apiHost });
+    logger.debug('Fetching pending messages for user', { userId, apiHost: this.apiHost });
     try {
       const response = await fetch(`${this.apiHost}/api/messages/pending/${userId}`);
       if (response.ok) {
@@ -44,7 +44,7 @@ class MessageService {
    */
   async saveOfflineMessage({ sender, receiver, content }) {
     logger.info('Saving offline message', { sender, receiver });
-   console.log('Saving offline message for receiver', { receiver, apiHost: this.apiHost });
+    logger.debug('Saving offline message for receiver', { receiver, apiHost: this.apiHost });
     try {
       const response = await fetch(`${this.apiHost}/api/message`, {
         method: 'POST',

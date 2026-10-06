@@ -21,12 +21,21 @@ class ExpoService {
       return;
     }
 
+    const image = data.senderProfileImageLowQuality || data.senderProfileImage || data.senderImageUrl || data.image;
+    const categoryId = data.categoryId || data.categoryIdentifier;
+
     const messages = expoTokens.map(token => ({
       to: token,
       sound: 'default',
       title,
       body,
-      data,
+      data: {
+        ...data,
+        ...(image ? { image } : {}),
+        ...(categoryId ? { categoryId } : {}),
+      },
+      ...(categoryId ? { categoryId } : {}),
+      ...(image ? { richContent: { image } } : {}),
     }));
 
     const batches = this.createBatches(messages, this.BATCH_SIZE);
@@ -39,7 +48,17 @@ class ExpoService {
           body: JSON.stringify(batch),
         });
 
-        const result = await response.json();
+        const responseText = await response.text();
+        const result = this.parseExpoResponse(responseText);
+        if (!response.ok) {
+          logger.error('Expo push request failed', {
+            status: response.status,
+            statusText: response.statusText,
+            body: result || responseText,
+          });
+          continue;
+        }
+
         logger.debug('Expo push batch sent', { 
           count: batch.length, 
           result: result 
@@ -47,6 +66,20 @@ class ExpoService {
       } catch (err) {
         logger.error('Expo push error', { error: err.message });
       }
+    }
+  }
+
+  parseExpoResponse(responseText = '') {
+    const text = String(responseText || '').trim();
+    if (!text) return null;
+
+    try {
+      return JSON.parse(text);
+    } catch (error) {
+      logger.warn('Expo returned non-JSON response', {
+        body: text.slice(0, 300),
+      });
+      return text;
     }
   }
 

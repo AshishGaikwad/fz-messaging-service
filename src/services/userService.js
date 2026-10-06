@@ -5,14 +5,52 @@
  */
 
 const logger = require('../utils/logger');
-const User = require('../models/User');
 const env = require('../config/environment');
+const fs = require('fs');
+const path = require('path');
+
+const TOKEN_STORE_PATH = path.join(__dirname, '../../data/expo-tokens.json');
 
 class UserService {
   constructor() {
     this.userSocketMap = new Map(); // Map<userId, socketId>
     this.userExpoTokens = new Map(); // Map<userId, Set<ExpoToken>>
     this.userApiBaseUrl = env.USER_API_BASE_URL;
+    this.loadExpoTokens();
+  }
+
+  loadExpoTokens() {
+    try {
+      if (!fs.existsSync(TOKEN_STORE_PATH)) {
+        return;
+      }
+      const raw = fs.readFileSync(TOKEN_STORE_PATH, 'utf8');
+      const parsed = raw ? JSON.parse(raw) : {};
+      Object.entries(parsed).forEach(([userId, tokens]) => {
+        if (Array.isArray(tokens) && tokens.length > 0) {
+          this.userExpoTokens.set(String(userId), new Set(tokens.filter(Boolean)));
+        }
+      });
+      logger.info('Expo tokens loaded', { users: this.userExpoTokens.size });
+    } catch (error) {
+      logger.warn('Failed to load Expo tokens', { error: error.message });
+    }
+  }
+
+  persistExpoTokens() {
+    try {
+      const dir = path.dirname(TOKEN_STORE_PATH);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      const data = {};
+      this.userExpoTokens.forEach((tokens, userId) => {
+        data[userId] = Array.from(tokens);
+      });
+      fs.writeFileSync(TOKEN_STORE_PATH, JSON.stringify(data, null, 2));
+    } catch (error) {
+      logger.warn('Failed to persist Expo tokens', { error: error.message });
+    }
   }
 
   /**
@@ -37,6 +75,7 @@ class UserService {
       this.userExpoTokens.set(key, new Set());
     }
     this.userExpoTokens.get(key).add(expoToken);
+    this.persistExpoTokens();
     logger.info('Expo token registered', { userId: key, expoToken });
   }
 
@@ -48,6 +87,7 @@ class UserService {
     if (this.userExpoTokens.get(key).size === 0) {
       this.userExpoTokens.delete(key);
     }
+    this.persistExpoTokens();
     logger.info('Expo token removed', { userId: key, removed });
     return removed;
   }
@@ -57,8 +97,11 @@ class UserService {
    */
   getUserExpoTokens(userId) {
     const key = String(userId);
-    if (!this.userExpoTokens.has(key)) return [];
-    return Array.from(this.userExpoTokens.get(key));
+    const tokens = this.userExpoTokens.has(key) ? Array.from(this.userExpoTokens.get(key)) : [];
+    if (tokens.length === 0) {
+      logger.warn('No Expo tokens registered for user', { userId: key });
+    }
+    return tokens;
   }
 
   /**
@@ -131,14 +174,18 @@ class UserService {
     if (!userId) return null;
 
     try {
-      const response = await fetch(`${this.userApiBaseUrl}/user/${userId}`);
-      if (!response.ok) return null;
+      const response = await fetch(`${this.userApiBaseUrl}/internal/users/${userId}/summary`);
+      if (!response.ok) {
+        logger.warn('User profile lookup failed', { userId, status: response.status });
+        return null;
+      }
 
       const payload = await response.json();
       const user = payload?.body || payload;
+      const fullName = typeof user?.fullName === 'string' ? user.fullName.trim() : null;
       return {
         id: String(user?.id || userId),
-        fullName: user?.fullName || user?.name || null,
+        fullName: fullName || null,
         profileImage: user?.profilePicUrl || user?.profileImageUrl || null,
       };
     } catch (error) {

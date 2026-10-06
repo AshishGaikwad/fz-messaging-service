@@ -9,9 +9,12 @@ services:
         NODE_ENV: ${DOCKER_ENV:-production}
     container_name: fz-messaging-service-${DOCKER_ENV:-prod}
     ports:
-      - "${HOST_PORT:-9093}:${HOST_PORT:-9093}"
+      - "${HOST_PORT:-9093}:${CONTAINER_PORT:-9093}"
     env_file:
       - .env.${DOCKER_ENV:-prod}
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: ${CONTAINER_PORT:-9093}
     restart: unless-stopped
     # To run a specific environment, set DOCKER_ENV and HOST_PORT:
     # DOCKER_ENV=dev HOST_PORT=9093 docker compose up -d --build
