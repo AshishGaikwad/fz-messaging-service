@@ -7,6 +7,7 @@ pipeline {
 
   environment {
     IMAGE_NAME = 'fz-messaging-service'
+    NODE_IMAGE = 'node:20-alpine'
   }
 
   stages {
@@ -18,15 +19,15 @@ pipeline {
 
     stage('Install Dependencies') {
       steps {
-        sh 'npm ci'
+        sh "docker run --rm -u \$(id -u):\$(id -g) -e npm_config_cache=/tmp/.npm -v \"\$PWD\":/usr/src/app -w /usr/src/app ${NODE_IMAGE} npm ci"
       }
     }
 
     stage('Run Tests') {
       steps {
         script {
-          if (fileExists('package.json') && sh(returnStatus: true, script: 'npm test -- --help >/dev/null 2>&1') == 0) {
-            sh 'npm test'
+          if (fileExists('package.json') && sh(returnStatus: true, script: "docker run --rm -u \$(id -u):\$(id -g) -e npm_config_cache=/tmp/.npm -v \"\$PWD\":/usr/src/app -w /usr/src/app ${NODE_IMAGE} npm test -- --help >/dev/null 2>&1") == 0) {
+            sh "docker run --rm -u \$(id -u):\$(id -g) -e npm_config_cache=/tmp/.npm -v \"\$PWD\":/usr/src/app -w /usr/src/app ${NODE_IMAGE} npm test"
           } else {
             echo 'Skipping tests because no test script is configured.'
           }
